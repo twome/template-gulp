@@ -5,6 +5,7 @@ console.info(`Running ${__filename}`)
 const path = require('path')
 const fs = require('fs')
 const { promisify } = require('util')
+const { spawn } = require('child_process')
 
 const readFile = promisify(fs.readFile)
 
@@ -294,8 +295,6 @@ let bundleTask = ()=>{
 
 
 
-
-
 let imagesTask = () => {
 	let stream = gulp.src(p(paths.images.src, '**/*'))
 		
@@ -358,6 +357,16 @@ let fontsTask = () => {
 
 
 
+let testTask = function() {
+	return new Promise((res, rej) => {
+		let testProcess = spawn('yarn', ['test'])
+		testProcess.stderr.on('data', rej)
+		testProcess.on('close', res)
+	})
+}
+
+
+
 // Watchers
 
 let cssWatch = () => {
@@ -414,6 +423,12 @@ let bundleWatch = () => {
 		],
 		bundleTask
 	)
+}
+let testWatch = () => {
+	let paths = [
+		p(paths.temp, '**/*')
+	]
+	return gulp.watch(paths, testTask)
 }
 
 
@@ -482,6 +497,7 @@ module.exports['images'] = imagesTask
 module.exports['bundle'] = bundleTask
 module.exports['clean'] = cleanTask 
 module.exports['server'] = serverTask 
+module.exports['test'] = testTask 
 
 // TODO
 // module.exports['deploy'] = deployTask 
@@ -492,6 +508,7 @@ module.exports['watch:js'] = jsWatch
 module.exports['watch:html'] = htmlWatch
 module.exports['watch:images'] = imagesWatch
 module.exports['watch:raw'] = rawWatch
+module.exports['watch:test'] = testWatch
 
 // One-command workflows
 module.exports['dev'] = devWorkflow
