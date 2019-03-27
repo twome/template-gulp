@@ -7,3 +7,5 @@ let { $: querySelector, $a: querySelectorAll, on: addEventListener /*, activeEle
 addEventListener('DOMContentLoaded', ()=>{
 	console.debug('Hello world!')
 })
+
+export let simpleTextVar = `g'day`
