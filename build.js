@@ -6,7 +6,6 @@ const path = require('path')
 const fs = require('fs')
 const { promisify } = require('util')
 const { spawn } = require('child_process')
-
 const readFile = promisify(fs.readFile)
 
 // 3rd-party
@@ -17,7 +16,6 @@ const Vinyl = require('vinyl')
 const asyncDone = require('async-done')
 import template from './node_modules/lodash-es/template.js'
 const liveServer = require('live-server')
-const dependencyTree = require('dependency-tree')
 
 // ## Gulp & plugins
 const gulp = require('gulp')
@@ -41,11 +39,12 @@ const cssnano = require('cssnano')
 const postcssScss = require('postcss-scss')
 const autoprefixer = require('autoprefixer')
 
-console.info('Module imports finished.')
-
 // In-house
 const { parseConfigs, envs } = require('./build-config.js')
 import throttle from './peers/throttle.js'
+import { startBrowserServer, freshNodeRun } from './prepare-tests.js'
+
+console.info('Module imports finished.')
 
 // Parse environment variable & command-line config settings into a config object (passing in app defaults)
 let config = parseConfigs({
@@ -53,7 +52,8 @@ let config = parseConfigs({
 	NODE_ENV: envs.production,
 	LOCAL_SERVER_PORT: 8081,
 	LOCAL_SERVER_HOSTNAME: 'localhost',
-	CSS_SOURCEMAPS: true
+	CSS_SOURCEMAPS: true,
+	TEST_EVERY_CHANGE: false
 })
 
 console.info(`Running in ${config.NODE_ENV.humanName} mode.`)
@@ -70,6 +70,9 @@ let makeGulpStream = (fileName)=>{
 
 // Build-process config
 let paths = {
+	nodeModules: p(__dirname, 'node_modules'),
+	tests: p(__dirname, 'test'),
+
 	// Non-source / machine output:
 	cache: p(__dirname, '.cache'),
 	temp: p(__dirname, '.tmp'), // Where we send the pre-processed site before bundling with Parcel. Dev server should be able to run here.
@@ -217,16 +220,7 @@ let jsTask = () => {
 		.pipe(gulp.dest(paths.js.temp))	
 }
 
-// TODO
-// This just imports unpublished node modules to a version controlled directory so it's always available a development dependency
-// Basically this is like a git submodule, without the git
-let dependencyTask = ()=>{
-	let tree = dependencyTree({
-		filename: p(paths.html.temp, 'index.html')
-	})
 
-	// TODO: do a simple filesystem copy of dependencies into <projectroot>/peers
-}
 
 let bundleTask = ()=>{
 	webpackCompiler = webpackCompiler || webpack({
@@ -237,7 +231,7 @@ let bundleTask = ()=>{
 			path: inDev ? p(paths.js.temp, '/') : p(paths.js.dist, '/'),
 			publicPath: '/',
 			filename: 'bundle.js', //'[name].bundle.[chunkhash].js',
-				library: 'BareLibrary'
+			library: 'BareLibrary'
 		},
 		target: 'web',
 		stats: 'minimal',
@@ -292,6 +286,8 @@ let bundleTask = ()=>{
 
 	return bundle // Promise
 }*/
+
+
 
 
 
@@ -357,11 +353,10 @@ let fontsTask = () => {
 
 
 
-let testTask = function() {
+let testTask = () => {
 	return new Promise((res, rej) => {
-		let testProcess = spawn('yarn', ['test'])
-		testProcess.stderr.on('data', rej)
-		testProcess.on('close', res)
+		startBrowserServer(__dirname)
+		freshNodeRun(__dirname).then(res, rej)
 	})
 }
 
@@ -526,6 +521,12 @@ module.exports['default'] = envToWorkflowsMap[config.NODE_ENV.humanName]
 // Automatically end the build process if any of its dependencies change
 gulp.watch(buildConfigDependencies, ()=>{
 	console.error(`[buildfile] One of the configuration files the buildfile depends on has changed; ending.`)
+	// Restart this exact process we called within a child process
+	const subprocess = spawn(process.argv[1], process.argv.slice(2), {
+		detached: true, 
+		stdio: ['ignore', out, err]
+	})
+    subprocess.unref()
 	process.kill(process.pid, 'SIGINT')
 })
 
